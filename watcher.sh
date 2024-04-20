@@ -1,27 +1,38 @@
 #!/bin/bash
 
-# Name of the namespace
+# Define script variables:
+# NAMESPACE - The Kubernetes namespace where the deployment is located.
+# DEPLOYMENT_NAME - The name of the deployment to be monitored.
+# MAX_RESTARTS - The maximum number of allowed restarts before intervention.
 NAMESPACE="sre"
+DEPLOYMENT_NAME="swype-app"
+MAX_RESTARTS=3
 
-# Name of the deployment
-DEPLOYMENT="swype-app"
-
-# Maximum number of restarts before scaling down
-MAX_RESTARTS=4
-
+# Start an infinite loop to continuously monitor pod restarts.
+# This allows for ongoing checks without manual intervention.
 while true; do
-  # Get the number of restarts of the pod
-  RESTARTS=$(kubectl get pods -n ${NAMESPACE} -l app=${DEPLOYMENT} -o jsonpath="{.items[0].status.containerStatuses[0].restartCount}")
+    # Fetch the current number of restarts for the first container in the first pod
+    # matching the deployment name in the specified namespace.
+    # kubectl command is used with a JSONPath expression to extract the restart count.
+    CURRENT_RESTARTS=$(kubectl get pods -n ${NAMESPACE} -l app=${DEPLOYMENT_NAME} -o jsonpath="{.items[0].status.containerStatuses[0].restartCount}")
 
-  echo "Current number of restarts: ${RESTARTS}"
+    # Output the current restart count to the console for logging and debugging.
+    echo "Current restart count for $DEPLOYMENT_NAME: $CURRENT_RESTARTS"
 
-  # If the number of restarts is greater than the maximum allowed, scale down the deployment
-  if (( RESTARTS > MAX_RESTARTS )); then
-    echo "Maximum number of restarts exceeded. Scaling down the deployment..."
-    kubectl scale --replicas=0 deployment/${DEPLOYMENT} -n ${NAMESPACE}
-    break
-  fi
+    # Check if the current restart count exceeds the predefined maximum allowed restarts.
+    if [ "$CURRENT_RESTARTS" -gt "$MAX_RESTARTS" ]; then
+        # If the restart limit is exceeded, log this status and proceed to scale down the deployment.
+        echo "Restart limit exceeded. Scaling down $DEPLOYMENT_NAME."
 
-  # Wait for a while before the next check
-  sleep 60
+        # Scale the deployment down to zero replicas to stop the faulty behavior and prevent further issues.
+        # This command adjusts the deployment's replica count to zero within the specified namespace.
+        kubectl scale deployment $DEPLOYMENT_NAME --replicas=0 -n $NAMESPACE
+
+        # Exit the loop and terminate the script as the necessary action has been taken.
+        break
+    else
+        # If the restart count is within limits, pause the script for 60 seconds before the next check.
+        # This delay helps manage resource usage and reduces the frequency of checks.
+        sleep 60
+    fi
 done
